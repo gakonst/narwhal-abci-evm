@@ -14,33 +14,24 @@ use futures::SinkExt;
 use primary::{Certificate, Primary};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
-use tokio::sync::oneshot::{channel as oneshot_channel, Receiver as OneShotReceiver, Sender as OneShotSender};
+use tokio::sync::oneshot::{
+    channel as oneshot_channel, Receiver as OneShotReceiver, Sender as OneShotSender,
+};
 use worker::Worker;
 
 use rocksdb;
-use warp;
-use std::collections::HashMap;
-use warp::{
-    http::Response,
-    Filter,
-};
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpStream;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use std::collections::HashMap;
 use tendermint_abci::ClientBuilder;
 use tendermint_proto::abci::{
-    RequestDeliverTx,
-    RequestQuery,
-    ResponseQuery,
-    RequestInitChain,
-    RequestBeginBlock,
-    RequestEndBlock,
-    RequestInfo,
+    RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
+    RequestQuery, ResponseQuery,
 };
-use tendermint_proto::types::{
-    Header,
-};
-
+use tendermint_proto::types::Header;
+use tokio::net::TcpStream;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use warp;
+use warp::{http::Response, Filter};
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -99,9 +90,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-
-
-use warp::{http::StatusCode, reject, Reply, Rejection};
+use warp::{http::StatusCode, reject, Rejection, Reply};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastTxQuery {
@@ -181,10 +170,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .worker(&keypair_name.clone(), &0)
                 .expect("Our public key or worker id is not in the committee")
                 .transactions;
-            
+
             // ABCI queries will be sent using this from the RPC to the ABCI client
             let (tx_abci_queries, mut rx_abci_queries) = channel(CHANNEL_CAPACITY);
-
 
             tokio::spawn(async move {
                 // let tx_abci_queries = tx_abci_queries.clone();
@@ -196,7 +184,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
 
                         let stream = TcpStream::connect(mempool_address)
                             .await
-                            .context(format!("ROUTE_BROADCAST_TX failed to connect to {}", mempool_address))
+                            .context(format!(
+                                "ROUTE_BROADCAST_TX failed to connect to {}",
+                                mempool_address
+                            ))
                             .unwrap();
                         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
 
@@ -233,13 +224,12 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 address.set_ip("0.0.0.0".parse().unwrap());
                 log::warn!(
                     "Primary {} listening to HTTP RPC on {}",
-                    keypair_name, address
+                    keypair_name,
+                    address
                 );
 
-                warp::serve(route)
-                    .run(address).await;
+                warp::serve(route).run(address).await;
             });
-
 
             // Analyze the consensus' output.
             let mut engine = Engine {
