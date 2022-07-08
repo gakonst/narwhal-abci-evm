@@ -57,6 +57,12 @@ async fn main() -> Result<()> {
                 .subcommand(
                     SubCommand::with_name("primary")
                         .about("Run a single primary")
+                        .args_from_usage(
+                            "--app-api=<URL> 'The host of the ABCI app receiving transactions'",
+                        )
+                        .args_from_usage(
+                            "--abci-api=<URL> 'The address to receive ABCI connections to'",
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("worker")
@@ -111,6 +117,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     let committee_file = matches.value_of("committee").unwrap();
     let parameters_file = matches.value_of("parameters");
     let store_path = matches.value_of("store").unwrap();
+    let app_api = matches.value_of("app-api").unwrap().to_string();
+    let abci_api = matches.value_of("abci-api").unwrap().to_string();
 
     // Read the committee and node's keypair from file.
     let keypair = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
@@ -159,10 +167,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             );
 
             // Spawn the network receiver listening to messages from the other primaries.
-            let mut app_address = committee
-                .primary(&keypair_name.clone())
-                .expect("Our public key or worker id is not in the committee")
-                .api_abci;
+            let mut app_address = app_api.parse::<SocketAddr>().unwrap();
             app_address.set_ip("0.0.0.0".parse().unwrap());
 
             // address of mempool
@@ -216,11 +221,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
 
                 let route = route_broadcast_tx.or(route_abci_query);
 
-                // Spawn the network receiver listening to messages from the other primaries.
-                let mut address = committee
-                    .primary(&keypair_name)
-                    .expect("Our public key or worker id is not in the committee")
-                    .api_rpc;
+                // Spawn the ABCI RPC endpoint
+                let mut address = abci_api.parse::<SocketAddr>().unwrap();
                 address.set_ip("0.0.0.0".parse().unwrap());
                 log::warn!(
                     "Primary {} listening to HTTP RPC on {}",
@@ -320,9 +322,16 @@ impl Engine {
                             // log::warn!("BATCH {:?}: {:?}", key, value);
                             log::warn!("BATCH FOUND: {:?}", hex::encode(&key));
 
+                            pub type Transaction = Vec<u8>;
+                            pub type Batch = Vec<Transaction>;
+                            #[derive(serde::Deserialize)]
+                            pub enum WorkerMessage {
+                                Batch(Batch)
+                            }
+
                             // Deserialize and parse the message.
                             match bincode::deserialize(&value) {
-                                Ok(worker::worker::WorkerMessage::Batch(batch)) => {
+                                Ok(WorkerMessage::Batch(batch)) => {
                                     // log::warn!("BATCH: {:?}", batch);
 
                                     for tx in batch {
