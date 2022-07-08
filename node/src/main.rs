@@ -5,33 +5,26 @@ use anyhow::{Context, Result};
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use config::Export as _;
 use config::Import as _;
-use config::WorkerAddresses;
 use config::{Committee, KeyPair, Parameters, WorkerId};
 use consensus::Consensus;
 use env_logger::Env;
-use ethers::prelude::{NameOrAddress, TransactionRequest};
 use futures::SinkExt;
 use primary::{Certificate, Primary};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
-use tokio::sync::oneshot::{
-    channel as oneshot_channel, Receiver as OneShotReceiver, Sender as OneShotSender,
-};
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneShotSender};
 use worker::Worker;
 
-use rocksdb;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tendermint_abci::ClientBuilder;
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
-    RequestQuery, ResponseQuery,
+    RequestQuery,
 };
 use tendermint_proto::types::Header;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use warp;
-use warp::{http::Response, Filter};
+use warp::{Filter, Rejection};
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -96,8 +89,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-use warp::{http::StatusCode, reject, Rejection, Reply};
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastTxQuery {
     tx: String,
@@ -139,8 +130,6 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     // Channels the sequence of certificates.
     let (tx_output, mut rx_output) = channel(CHANNEL_CAPACITY);
 
-    let name = keypair.name.clone();
-
     // Check whether to run a primary, a worker, or an entire authority.
     match matches.subcommand() {
         // Spawn the primary and consensus core.
@@ -148,7 +137,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
             let (tx_feedback, rx_feedback) = channel(CHANNEL_CAPACITY);
 
-            let keypair_name = keypair.name.clone();
+            let keypair_name = keypair.name;
 
             Primary::spawn(
                 keypair,
@@ -177,7 +166,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .transactions;
 
             // ABCI queries will be sent using this from the RPC to the ABCI client
-            let (tx_abci_queries, mut rx_abci_queries) = channel(CHANNEL_CAPACITY);
+            let (tx_abci_queries, rx_abci_queries) = channel(CHANNEL_CAPACITY);
 
             tokio::spawn(async move {
                 // let tx_abci_queries = tx_abci_queries.clone();
@@ -197,8 +186,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
 
                         if let Err(e) = transport.send(req.tx.clone().into()).await {
-                            // return Err::<_, Rejection>("Ooops, something went wrong!");
-                            Ok::<_, Rejection>(format!("ERROR IN: broadcast_tx: {:?}", req))
+                            Ok::<_, Rejection>(format!(
+                                "ERROR IN: broadcast_tx: {:?}. Err: {}",
+                                req, e
+                            ))
                         } else {
                             Ok::<_, Rejection>(format!("broadcast_tx: {:?}", req))
                         }
@@ -212,7 +203,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                             log::warn!("abci_query: {:?}", req);
 
                             let (tx, rx) = oneshot_channel();
-                            tx_abci_queries.send((tx, req.clone())).await;
+                            match tx_abci_queries.send((tx, req.clone())).await {
+                                Ok(_) => {}
+                                Err(err) => log::error!("Error forwarding abci query: {}", err),
+                            };
                             let resp = rx.await;
 
                             Ok::<_, Rejection>(format!("abci_query: {:?} -> {:?}", req, resp))
@@ -292,9 +286,11 @@ impl Engine {
 
                 Some(certificate) = rx_output.recv() => {
                     let mut req = RequestBeginBlock::default();
-                    let mut header = Header::default();
-                    header.height = last_block_height;
-                    last_block_height = last_block_height + 1;
+                    let header = Header {
+                        height: last_block_height,
+                        ..Default::default()
+                    };
+                    last_block_height += 1;
                     req.header = Some(header);
                     match client.begin_block(req.clone()) {
                         Ok(res) => {
@@ -337,7 +333,7 @@ impl Engine {
                                     for tx in batch {
                                         println!("DeliverTx'ing: {:?}", tx);
 
-                                        match client.deliver_tx(RequestDeliverTx { tx: tx.into() }) {
+                                        match client.deliver_tx(RequestDeliverTx { tx }) {
                                             Ok(res) => {
                                                 println!("DeliverTx'ed -> {:?}", res);
                                             }
@@ -376,14 +372,18 @@ impl Engine {
 
                     match client.query(RequestQuery {
                             data: req.data.into(),
-                            path: req.path.into(),
+                            path: req.path,
                             height: req_height as i64,
                             prove: req_prove,
                         }) {
 
                         Ok(res) => {
                             println!("Query'ed -> {:?}", res);
-                            tx.send(format!("{:?}", res));
+                            match tx.send(format!("{:?}", res)) {
+                                Ok(_) => {},
+                                Err(err) => log::error!("Could not send tx to rx {}", err),
+
+                            }
                         }
                         Err(err) => log::error!("Query ERROR {}", err),
                     };
