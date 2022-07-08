@@ -1738,6 +1738,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "narwhal-abci"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "futures",
+ "log",
+ "rocksdb",
+ "serde",
+ "tokio",
+ "tokio-util 0.6.10",
+ "warp",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
