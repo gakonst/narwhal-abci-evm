@@ -31,7 +31,7 @@ impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
         }
     }
 
-    pub async fn serve(&'static self, address: SocketAddr) {
+    pub fn routes(self) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
         let route_broadcast_tx = warp::path("broadcast_tx")
             .and(warp::query::<BroadcastTxQuery>())
             .and_then(move |req: BroadcastTxQuery| async move {
@@ -70,10 +70,6 @@ impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
                 }
             });
 
-        let route = route_broadcast_tx.or(route_abci_query);
-
-        // Spawn the ABCI RPC endpoint
-        log::warn!("Primary listening to HTTP ABCI messages on {}", address);
-        warp::serve(route).run(address).await;
+        route_broadcast_tx.or(route_abci_query)
     }
 }

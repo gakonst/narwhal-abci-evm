@@ -1794,7 +1794,6 @@ dependencies = [
 name = "node"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bincode",
  "bytes",
  "clap",
@@ -1803,9 +1802,11 @@ dependencies = [
  "crypto",
  "env_logger",
  "ethers",
+ "eyre",
  "futures",
  "hex",
  "log",
+ "narwhal-abci",
  "primary",
  "rand 0.7.3",
  "reqwest",

@@ -1,30 +1,20 @@
+use crypto::PublicKey;
+use eyre::{Result, WrapErr};
 use std::net::SocketAddr;
 
 // Copyright(C) Facebook, Inc. and its affiliates.
-use anyhow::{Context, Result};
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use config::Export as _;
 use config::Import as _;
 use config::{Committee, KeyPair, Parameters, WorkerId};
 use consensus::Consensus;
 use env_logger::Env;
-use futures::SinkExt;
-use primary::{Certificate, Primary};
+use primary::Primary;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneShotSender};
 use worker::Worker;
 
-use serde::{Deserialize, Serialize};
-use tendermint_abci::ClientBuilder;
-use tendermint_proto::abci::{
-    RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
-    RequestQuery,
-};
-use tendermint_proto::types::Header;
-use tokio::net::TcpStream;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use warp::{Filter, Rejection};
+use narwhal_abci::{AbciApi, Engine};
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -89,19 +79,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BroadcastTxQuery {
-    tx: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AbciQueryQuery {
-    path: String,
-    data: String,
-    height: Option<usize>,
-    prove: Option<bool>,
-}
-
 // Runs either a worker or a primary.
 async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     let key_file = matches.value_of("keys").unwrap();
@@ -155,85 +132,15 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 tx_output,
             );
 
-            // Spawn the network receiver listening to messages from the other primaries.
-            let mut app_address = app_api.parse::<SocketAddr>().unwrap();
-            app_address.set_ip("0.0.0.0".parse().unwrap());
-
-            // address of mempool
-            let mempool_address = committee
-                .worker(&keypair_name.clone(), &0)
-                .expect("Our public key or worker id is not in the committee")
-                .transactions;
-
-            // ABCI queries will be sent using this from the RPC to the ABCI client
-            let (tx_abci_queries, rx_abci_queries) = channel(CHANNEL_CAPACITY);
-
-            tokio::spawn(async move {
-                // let tx_abci_queries = tx_abci_queries.clone();
-
-                let route_broadcast_tx = warp::path("broadcast_tx")
-                    .and(warp::query::<BroadcastTxQuery>())
-                    .and_then(move |req: BroadcastTxQuery| async move {
-                        log::warn!("broadcast_tx: {:?}", req);
-
-                        let stream = TcpStream::connect(mempool_address)
-                            .await
-                            .context(format!(
-                                "ROUTE_BROADCAST_TX failed to connect to {}",
-                                mempool_address
-                            ))
-                            .unwrap();
-                        let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
-
-                        if let Err(e) = transport.send(req.tx.clone().into()).await {
-                            Ok::<_, Rejection>(format!(
-                                "ERROR IN: broadcast_tx: {:?}. Err: {}",
-                                req, e
-                            ))
-                        } else {
-                            Ok::<_, Rejection>(format!("broadcast_tx: {:?}", req))
-                        }
-                    });
-
-                let route_abci_query = warp::path("abci_query")
-                    .and(warp::query::<AbciQueryQuery>())
-                    .and_then(move |req: AbciQueryQuery| {
-                        let tx_abci_queries = tx_abci_queries.clone();
-                        async move {
-                            log::warn!("abci_query: {:?}", req);
-
-                            let (tx, rx) = oneshot_channel();
-                            match tx_abci_queries.send((tx, req.clone())).await {
-                                Ok(_) => {}
-                                Err(err) => log::error!("Error forwarding abci query: {}", err),
-                            };
-                            let resp = rx.await;
-
-                            Ok::<_, Rejection>(format!("abci_query: {:?} -> {:?}", req, resp))
-                        }
-                    });
-
-                let route = route_broadcast_tx.or(route_abci_query);
-
-                // Spawn the ABCI RPC endpoint
-                let mut address = abci_api.parse::<SocketAddr>().unwrap();
-                address.set_ip("0.0.0.0".parse().unwrap());
-                log::warn!(
-                    "Primary {} listening to HTTP RPC on {}",
-                    keypair_name,
-                    address
-                );
-
-                warp::serve(route).run(address).await;
-            });
-
-            // Analyze the consensus' output.
-            let mut engine = Engine {
-                store_path: store_path.to_string(),
-                app_address,
-                rx_abci_queries,
-            };
-            engine.run(rx_output).await?;
+            process(
+                rx_output,
+                store_path,
+                keypair_name,
+                committee,
+                abci_api,
+                app_api,
+            )
+            .await?;
         }
 
         // Spawn a single worker.
@@ -263,136 +170,38 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     unreachable!();
 }
 
-pub struct Engine {
-    pub app_address: SocketAddr,
-    pub store_path: String,
-    pub rx_abci_queries: Receiver<(OneShotSender<String>, AbciQueryQuery)>,
-}
+async fn process(
+    rx_output: Receiver<primary::Certificate>,
+    store_path: &str,
+    keypair_name: PublicKey,
+    committee: Committee,
+    abci_api: String,
+    app_api: String,
+) -> eyre::Result<()> {
+    // address of mempool
+    let mempool_address = committee
+        .worker(&keypair_name.clone(), &0)
+        .expect("Our public key or worker id is not in the committee")
+        .transactions;
 
-/// Receives an ordered list of certificates and apply any application-specific logic.
-impl Engine {
-    async fn run(&mut self, mut rx_output: Receiver<Certificate>) -> anyhow::Result<()> {
-        let mut client = ClientBuilder::default().connect(&self.app_address).unwrap();
-        let res = client.info(RequestInfo::default()).unwrap();
-        let mut last_block_height = res.last_block_height + 1;
-        println!("RequestInfo: {:?}", res);
+    // ABCI queries will be sent using this from the RPC to the ABCI client
+    let (tx_abci_queries, rx_abci_queries) = channel(CHANNEL_CAPACITY);
 
-        let mut client = ClientBuilder::default().connect(&self.app_address).unwrap();
+    tokio::spawn(async move {
+        let api = AbciApi::new(mempool_address, tx_abci_queries);
+        // let tx_abci_queries = tx_abci_queries.clone();
+        // Spawn the ABCI RPC endpoint
+        let mut address = abci_api.parse::<SocketAddr>().unwrap();
+        address.set_ip("0.0.0.0".parse().unwrap());
+        warp::serve(api.routes()).run(address).await
+    });
 
-        client.init_chain(RequestInitChain::default()).unwrap();
+    // Analyze the consensus' output.
+    // Spawn the network receiver listening to messages from the other primaries.
+    let mut app_address = app_api.parse::<SocketAddr>().unwrap();
+    app_address.set_ip("0.0.0.0".parse().unwrap());
+    let mut engine = Engine::new(app_address, store_path, rx_abci_queries);
+    engine.run(rx_output).await?;
 
-        loop {
-            tokio::select! {
-
-                Some(certificate) = rx_output.recv() => {
-                    let mut req = RequestBeginBlock::default();
-                    let header = Header {
-                        height: last_block_height,
-                        ..Default::default()
-                    };
-                    last_block_height += 1;
-                    req.header = Some(header);
-                    match client.begin_block(req.clone()) {
-                        Ok(res) => {
-                            println!("BeginBlock {:?} -> {:?}", req, res);
-                        }
-                        Err(err) => log::error!("BeginBlock ERROR {}", err),
-                    };
-
-                    for (digest, worker_id) in certificate.header.payload.iter() {
-                        // these actually seem to be consistent across honest nodes, according to experiments!
-                        log::warn!(
-                            "LEDGER {} -> {:?} from {:?}",
-                            certificate.header,
-                            digest,
-                            worker_id
-                        );
-
-                        let db = rocksdb::DB::open_for_read_only(
-                            &rocksdb::Options::default(),
-                            format!("{}-{}", self.store_path, worker_id),
-                            true,
-                        )?;
-                        let key = digest.clone().to_vec();
-                        if let Ok(Some(value)) = db.get(&key) {
-                            // log::warn!("BATCH {:?}: {:?}", key, value);
-                            log::warn!("BATCH FOUND: {:?}", hex::encode(&key));
-
-                            pub type Transaction = Vec<u8>;
-                            pub type Batch = Vec<Transaction>;
-                            #[derive(serde::Deserialize)]
-                            pub enum WorkerMessage {
-                                Batch(Batch)
-                            }
-
-                            // Deserialize and parse the message.
-                            match bincode::deserialize(&value) {
-                                Ok(WorkerMessage::Batch(batch)) => {
-                                    // log::warn!("BATCH: {:?}", batch);
-
-                                    for tx in batch {
-                                        println!("DeliverTx'ing: {:?}", tx);
-
-                                        match client.deliver_tx(RequestDeliverTx { tx }) {
-                                            Ok(res) => {
-                                                println!("DeliverTx'ed -> {:?}", res);
-                                            }
-                                            Err(err) => log::error!("DeliverTx ERROR {}", err),
-                                        };
-                                    }
-                                }
-                                _ => unreachable!(),
-                            }
-                        } else {
-                            log::error!("BATCH NOT FOUND: {:?}", key);
-                            unreachable!()
-                        };
-                    }
-
-                    let req = RequestEndBlock { height: last_block_height - 1 };
-                    match client.end_block(req.clone()) {
-                        Ok(res) => {
-                            println!("EndBlock {:?} -> {:?}", req, res);
-                        }
-                        Err(err) => log::error!("EndBlock ERROR {}", err),
-                    };
-
-                    match client.commit() {
-                        Ok(res) => {
-                            println!("Commit -> {:?}", res);
-                        }
-                        Err(err) => log::error!("Commit ERROR {}", err),
-                    };
-                },
-                Some((tx, req)) = self.rx_abci_queries.recv() => {
-                    println!("Query'ing: {:?}", req);
-
-                    let req_height = req.height.unwrap_or(0);
-                    let req_prove = req.prove.unwrap_or(false);
-
-                    match client.query(RequestQuery {
-                            data: req.data.into(),
-                            path: req.path,
-                            height: req_height as i64,
-                            prove: req_prove,
-                        }) {
-
-                        Ok(res) => {
-                            println!("Query'ed -> {:?}", res);
-                            match tx.send(format!("{:?}", res)) {
-                                Ok(_) => {},
-                                Err(err) => log::error!("Could not send tx to rx {}", err),
-
-                            }
-                        }
-                        Err(err) => log::error!("Query ERROR {}", err),
-                    };
-                }
-
-                else => break,
-            }
-        }
-
-        Ok(())
-    }
+    Ok(())
 }
