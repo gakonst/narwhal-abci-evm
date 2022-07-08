@@ -1741,11 +1741,17 @@ dependencies = [
 name = "narwhal-abci"
 version = "0.1.0"
 dependencies = [
+ "bincode",
+ "crypto",
  "eyre",
  "futures",
+ "hex",
  "log",
+ "primary",
  "rocksdb",
  "serde",
+ "tendermint-abci",
+ "tendermint-proto",
  "tokio",
  "tokio-util 0.6.10",
  "warp",
