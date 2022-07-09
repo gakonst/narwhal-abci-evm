@@ -8,6 +8,8 @@ use clap::Parser;
 struct Args {
     #[clap(default_value = "0.0.0.0:26658")]
     host: String,
+    #[clap(long, short)]
+    demo: bool,
 }
 
 #[tokio::main]
@@ -19,7 +21,7 @@ async fn main() -> eyre::Result<()> {
         mempool,
         info,
         snapshot,
-    } = App::new();
+    } = App::new(args.demo);
     let server = Server::new(consensus, mempool, info, snapshot);
 
     dbg!(&args.host);
