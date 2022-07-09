@@ -222,7 +222,7 @@ impl<Db: Send + Sync + Database + DatabaseCommit> InfoTrait for Info<Db> {
                 return ResponseQuery {
                     value: "could not decode request".into(),
                     ..Default::default()
-                }
+                };
             }
         };
 
