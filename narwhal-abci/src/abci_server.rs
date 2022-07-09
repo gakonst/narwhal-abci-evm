@@ -20,7 +20,7 @@ pub struct AbciApi<T> {
     tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
 }
 
-impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
+impl<T: Send + Sync + std::fmt::Debug + warp::Reply> AbciApi<T> {
     pub fn new(
         mempool_address: SocketAddr,
         tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
@@ -65,8 +65,8 @@ impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
                         Ok(_) => {}
                         Err(err) => log::error!("Error forwarding abci query: {}", err),
                     };
-                    let resp = rx.await;
-                    Ok::<_, Rejection>(format!("abci_query: {:?} -> {:?}", req, resp))
+                    let resp = rx.await.unwrap();
+                    Ok::<_, Rejection>(resp)
                 }
             });
 
