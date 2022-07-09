@@ -1,5 +1,5 @@
 mod app;
 pub use app::App;
 
-mod types;
+pub mod types;
 pub use types::{Consensus, Info, Mempool, Snapshot, State};

@@ -23,3 +23,4 @@ clap = { version = "3.0.10", features = [
 ] }
 clap_complete = "3.0.4"
 foundry-evm = { git = "https://github.com/foundry-rs/foundry" }
+serde = { version = "1.0.138", features = ["derive"] }

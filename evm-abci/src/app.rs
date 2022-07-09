@@ -10,6 +10,12 @@ pub struct App<Db> {
     pub info: Info<Db>,
 }
 
+impl Default for App<CacheDB<EmptyDB>> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App<CacheDB<EmptyDB>> {
     pub fn new() -> Self {
         let state = State {
