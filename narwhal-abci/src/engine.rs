@@ -32,6 +32,7 @@ pub struct Engine {
     /// The last block height, initialized to the application's latest block by default
     pub last_block_height: i64,
     pub client: AbciClient,
+    pub req_client: AbciClient,
 }
 
 impl Engine {
@@ -49,12 +50,14 @@ impl Engine {
 
         // Instantiate a new client to not be locked in an Info connection
         let client = ClientBuilder::default().connect(&app_address).unwrap();
+        let req_client = ClientBuilder::default().connect(&app_address).unwrap();
         Self {
             app_address,
             store_path: store_path.to_string(),
             rx_abci_queries,
             last_block_height,
             client,
+            req_client,
         }
     }
 
@@ -107,7 +110,7 @@ impl Engine {
         let req_height = req.height.unwrap_or(0);
         let req_prove = req.prove.unwrap_or(false);
 
-        let resp = self.client.query(RequestQuery {
+        let resp = self.req_client.query(RequestQuery {
             data: req.data.into(),
             path: req.path,
             height: req_height as i64,
