@@ -7,7 +7,7 @@ use tokio::sync::oneshot::Sender as OneShotSender;
 use tendermint_abci::{Client as AbciClient, ClientBuilder};
 use tendermint_proto::abci::{
     RequestBeginBlock, RequestDeliverTx, RequestEndBlock, RequestInfo, RequestInitChain,
-    RequestQuery,
+    RequestQuery, ResponseQuery,
 };
 use tendermint_proto::types::Header;
 
@@ -28,7 +28,7 @@ pub struct Engine {
     /// for the data corresponding to a Certificate
     pub store_path: String,
     /// Messages received from the ABCI Server to be forwarded to the engine.
-    pub rx_abci_queries: Receiver<(OneShotSender<String>, AbciQueryQuery)>,
+    pub rx_abci_queries: Receiver<(OneShotSender<ResponseQuery>, AbciQueryQuery)>,
     /// The last block height, initialized to the application's latest block by default
     pub last_block_height: i64,
     pub client: AbciClient,
@@ -39,7 +39,7 @@ impl Engine {
     pub fn new(
         app_address: SocketAddr,
         store_path: &str,
-        rx_abci_queries: Receiver<(OneShotSender<String>, AbciQueryQuery)>,
+        rx_abci_queries: Receiver<(OneShotSender<ResponseQuery>, AbciQueryQuery)>,
     ) -> Self {
         let mut client = ClientBuilder::default().connect(&app_address).unwrap();
 
@@ -104,7 +104,7 @@ impl Engine {
     /// Client => Primary => handle_cert => ABCI App => Primary => Client
     fn handle_abci_query(
         &mut self,
-        tx: OneShotSender<String>,
+        tx: OneShotSender<ResponseQuery>,
         req: AbciQueryQuery,
     ) -> eyre::Result<()> {
         let req_height = req.height.unwrap_or(0);
@@ -117,8 +117,8 @@ impl Engine {
             prove: req_prove,
         })?;
 
-        if let Err(err) = tx.send(format!("{:?}", resp)) {
-            eyre::bail!(err);
+        if let Err(err) = tx.send(resp) {
+            eyre::bail!("{:?}", err);
         }
         Ok(())
     }

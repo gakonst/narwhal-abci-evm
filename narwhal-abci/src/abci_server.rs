@@ -2,6 +2,7 @@ use crate::{AbciQueryQuery, BroadcastTxQuery};
 
 use eyre::WrapErr;
 use futures::SinkExt;
+use tendermint_proto::abci::ResponseQuery;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneShotSender};
 
@@ -20,7 +21,7 @@ pub struct AbciApi<T> {
     tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
 }
 
-impl<T: Send + Sync + std::fmt::Debug + warp::Reply> AbciApi<T> {
+impl<T: Send + Sync + std::fmt::Debug> AbciApi<T> {
     pub fn new(
         mempool_address: SocketAddr,
         tx: Sender<(OneShotSender<T>, AbciQueryQuery)>,
@@ -30,7 +31,9 @@ impl<T: Send + Sync + std::fmt::Debug + warp::Reply> AbciApi<T> {
             tx,
         }
     }
+}
 
+impl AbciApi<ResponseQuery> {
     pub fn routes(self) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
         let route_broadcast_tx = warp::path("broadcast_tx")
             .and(warp::query::<BroadcastTxQuery>())
@@ -66,7 +69,8 @@ impl<T: Send + Sync + std::fmt::Debug + warp::Reply> AbciApi<T> {
                         Err(err) => log::error!("Error forwarding abci query: {}", err),
                     };
                     let resp = rx.await.unwrap();
-                    Ok::<_, Rejection>(resp)
+                    // Return the value
+                    Ok::<_, Rejection>(resp.value)
                 }
             });
 
