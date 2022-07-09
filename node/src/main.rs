@@ -85,8 +85,6 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     let committee_file = matches.value_of("committee").unwrap();
     let parameters_file = matches.value_of("parameters");
     let store_path = matches.value_of("store").unwrap();
-    let app_api = matches.value_of("app-api").unwrap().to_string();
-    let abci_api = matches.value_of("abci-api").unwrap().to_string();
 
     // Read the committee and node's keypair from file.
     let keypair = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
@@ -110,11 +108,14 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     // Check whether to run a primary, a worker, or an entire authority.
     match matches.subcommand() {
         // Spawn the primary and consensus core.
-        ("primary", _) => {
+        ("primary", Some(sub_matches)) => {
             let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
             let (tx_feedback, rx_feedback) = channel(CHANNEL_CAPACITY);
 
             let keypair_name = keypair.name;
+
+            let app_api = sub_matches.value_of("app-api").unwrap().to_string();
+            let abci_api = sub_matches.value_of("abci-api").unwrap().to_string();
 
             Primary::spawn(
                 keypair,
