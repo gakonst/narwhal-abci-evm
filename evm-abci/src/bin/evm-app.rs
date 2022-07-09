@@ -12,9 +12,24 @@ struct Args {
     demo: bool,
 }
 
+use tracing_error::ErrorLayer;
+
+use tracing_subscriber::prelude::*;
+
+/// Initializes a tracing Subscriber for logging
+#[allow(dead_code)]
+pub fn subscriber() {
+    tracing_subscriber::Registry::default()
+        .with(tracing_subscriber::EnvFilter::new("evm-app=trace"))
+        .with(ErrorLayer::default())
+        .with(tracing_subscriber::fmt::layer())
+        .init()
+}
+
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let args = Args::parse();
+    subscriber();
 
     let App {
         consensus,

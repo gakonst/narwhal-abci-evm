@@ -27,8 +27,7 @@ async fn main() -> Result<()> {
     println!("Alice balance before: {}", balance);
 
     let query = Query::Balance(bob);
-    let query = serde_json::to_string(&query).unwrap();
-    let res = client
+    let query = serde_json::to_string(&query).unwrap(); let res = client
         .get(format!("{}/abci_query", host))
         .query(&[("data", query), ("path", "".to_string())])
         .send()

@@ -108,24 +108,29 @@ impl<Db: Clone> Consensus<Db> {
 
 #[async_trait]
 impl<Db: Clone + Send + Sync + DatabaseCommit + Database> ConsensusTrait for Consensus<Db> {
+    #[tracing::instrument(skip(self))]
     async fn init_chain(&self, _init_chain_request: RequestInitChain) -> ResponseInitChain {
         ResponseInitChain::default()
     }
 
+    #[tracing::instrument(skip(self))]
     async fn begin_block(&self, _begin_block_request: RequestBeginBlock) -> ResponseBeginBlock {
         ResponseBeginBlock::default()
     }
 
+    #[tracing::instrument(skip(self))]
     async fn deliver_tx(&self, deliver_tx_request: RequestDeliverTx) -> ResponseDeliverTx {
+        tracing::trace!("delivering tx");
         let mut state = self.current_state.lock().await;
 
         let mut tx: TransactionRequest = match serde_json::from_slice(&deliver_tx_request.tx) {
             Ok(tx) => tx,
             Err(_) => {
+                tracing::error!("could not decode request");
                 return ResponseDeliverTx {
                     data: "could not decode request".into(),
                     ..Default::default()
-                }
+                };
             }
         };
 
@@ -136,6 +141,7 @@ impl<Db: Clone + Send + Sync + DatabaseCommit + Database> ConsensusTrait for Con
         };
 
         let result = state.execute(tx, false).await.unwrap();
+        tracing::trace!("executed tx");
 
         ResponseDeliverTx {
             data: serde_json::to_vec(&result).unwrap(),
@@ -143,19 +149,24 @@ impl<Db: Clone + Send + Sync + DatabaseCommit + Database> ConsensusTrait for Con
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn end_block(&self, end_block_request: RequestEndBlock) -> ResponseEndBlock {
+        tracing::trace!("ending block");
         let mut current_state = self.current_state.lock().await;
-
         current_state.block_height = end_block_request.height;
         current_state.app_hash = vec![];
+        tracing::trace!("done");
 
         ResponseEndBlock::default()
     }
 
+    #[tracing::instrument(skip(self))]
     async fn commit(&self, _commit_request: RequestCommit) -> ResponseCommit {
+        tracing::trace!("taking lock");
         let current_state = self.current_state.lock().await.clone();
         let mut committed_state = self.committed_state.lock().await;
         *committed_state = current_state;
+        tracing::trace!("committed");
 
         ResponseCommit {
             data: vec![], // (*committed_state).app_hash.clone(),
