@@ -98,6 +98,15 @@ class Committee:
             addresses += [authority['primary']['primary_to_primary']]
         return addresses
 
+    def rpc_addresses(self, faults=0):
+        ''' Returns an ordered list of rpcs' addresses. '''
+        assert faults < self.size()
+        addresses = []
+        good_nodes = self.size() - faults
+        for authority in list(self.json['authorities'].values())[:good_nodes]:
+            addresses += [authority['primary']['api_rpc']]
+        return addresses
+
     def app_addresses(self, faults=0):
         ''' Returns an ordered list of apps' addresses. '''
         assert faults < self.size()

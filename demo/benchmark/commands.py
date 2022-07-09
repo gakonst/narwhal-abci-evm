@@ -21,8 +21,7 @@ class CommandMaker:
 
     @staticmethod
     def compile():
-        # do def builds for now
-        return 'cargo build --features benchmark'
+        return 'cargo build'
         # return 'cargo build --quiet --release --features benchmark'
 
     @staticmethod
@@ -31,7 +30,7 @@ class CommandMaker:
         return f'{NODE} generate_keys --filename {filename}'
 
     @staticmethod
-    def run_primary(keys, committee, store, parameters, debug=False):
+    def run_primary(keys, committee, store, parameters, app_api, abci_api, debug=False):
         print(store, keys)
         assert isinstance(keys, str)
         assert isinstance(committee, str)
@@ -39,7 +38,7 @@ class CommandMaker:
         assert isinstance(debug, bool)
         v = '-vvv' if debug else '-vv'
         return (f'{NODE} {v} run --keys {keys} --committee {committee} '
-                f'--store {store} --parameters {parameters} primary')
+                f'--store {store} --parameters {parameters} primary --app-api {app_api} --abci-api {abci_api} ')
 
     @staticmethod
     def run_worker(keys, committee, store, parameters, id, debug=False):
@@ -64,7 +63,7 @@ class CommandMaker:
     @staticmethod
     def run_app(listen_on):
         assert isinstance(listen_on, str)
-        return f'../abci-test-python/venv/bin/python3 ../abci-test-python/app.py {listen_on}'
+        return f'../target/debug/evm-app --demo {listen_on}'
 
     @staticmethod
     def kill():

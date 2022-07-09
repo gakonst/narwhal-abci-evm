@@ -129,6 +129,8 @@ class LocalBench:
                     PathMaker.committee_file(),
                     PathMaker.db_path(i),
                     PathMaker.parameters_file(),
+                    app_api = committee.app_addresses(self.faults)[i],
+                    abci_api = committee.rpc_addresses(self.faults)[i],
                     debug=debug
                 )
                 log_file = PathMaker.primary_log_file(i)
