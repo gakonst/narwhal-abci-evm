@@ -1,0 +1,25 @@
+[package]
+name = "evm-abci"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+abci-rs = { version = "0.11.3", features = ["async-api" ] }
+async-trait = "0.1.56"
+ethers = { git = "https://github.com/gakonst/ethers-rs " }
+eyre = "0.6.8"
+hex = "0.4.3"
+serde_json = "1.0.82"
+tendermint-abci = { version = "0.23.7", features = ["client"] }
+tendermint-proto = "0.23.7"
+tokio = { version = "1.19.2", features = ["macros"] }
+clap = { version = "3.0.10", features = [
+    "derive",
+    "env",
+    "unicode",
+    "wrap_help",
+] }
+clap_complete = "3.0.4"
+foundry-evm = { git = "https://github.com/foundry-rs/foundry" }
