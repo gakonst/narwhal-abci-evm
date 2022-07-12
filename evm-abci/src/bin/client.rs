@@ -67,9 +67,9 @@ async fn main() -> Result<()> {
 
     // Send conflicting transactions
     println!("Alice sends conflicting transactions:");
-    println!("Alice sends TX to {} where she sends 1 ETH to Bob...", host_2);
+    println!("Alice sends TX to {} where she transfers 1 ETH to Bob...", host_2);
     send_transaction(host_2, alice, bob, value).await?;
-    println!("Alice sends TX to {} where she sends 1 ETH to Charlie...", host_3);
+    println!("Alice sends TX to {} where she transfers 1 ETH to Charlie...", host_3);
     send_transaction(host_3, alice, charlie, value).await?;
 
     println!("---");
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     // Query final balances from host_2
-    println!("Quering final balances from {}:", host_2);
+    println!("Querying final balances from {}:", host_2);
 
     let alice_final_balance_host_2 = query_balance(host_2, alice).await?;
     println!("Alice balance after: {} ETH", alice_final_balance_host_2);
@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
     println!("---");
 
     // Query final balances from host_3
-    println!("Quering final balances from {}:", host_3);
+    println!("Querying final balances from {}:", host_3);
 
     let alice_final_balance_host_3 = query_balance(host_3, alice).await?;
     println!("Alice balance after: {} ETH", alice_final_balance_host_3);
