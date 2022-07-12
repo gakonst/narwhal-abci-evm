@@ -10,10 +10,11 @@ Components
 
 ## Demo
 
-1. `cd demo && poetry run fab local`
-2. Separate terminal: `cargo run --bin client`
+1. `cargo run --bin evm-app`
+2. 2nd terminal: `cd demo && poetry install`
+3. 3rd terminal: `cargo run --bin client`
 
-This will spin up a network instance with the EVM app in Demo mode (giving Alice 100 ETH) and transfer 1 eth from Alice to Bob. This uses the underlying Foundry EVM.
+This will spin up a network instance with the EVM app in Demo mode (giving Alice 1.5 ETH) and transfer 1 ETH from Alice to Bob. This uses the underlying Foundry EVM.
 
 ## TODOs
 

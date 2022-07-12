@@ -1,1 +1,9 @@
 /target
+venv/
+demo/logs
+demo/.db*
+demo/.committee.json
+demo/.node*
+demo/node
+demo/.parameters.json
+demo/benchmark_client

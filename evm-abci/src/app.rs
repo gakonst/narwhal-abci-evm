@@ -31,11 +31,11 @@ impl App<CacheDB<EmptyDB>> {
         if demo {
             // addr(pk = 78aaa1de82137f31ac551fd8e876a6930aadd51b28c25e8c3420100f8e51d5c6)
             state.db.insert_account_info(
-                "0x2c47Faeff6ED706E9C1D95f51F1800938Cf7c632"
+                "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                     .parse()
                     .unwrap(),
                 foundry_evm::revm::AccountInfo {
-                    balance: ethers::utils::parse_ether(100).unwrap(),
+                    balance: ethers::utils::parse_ether(1.5).unwrap(),
                     ..Default::default()
                 },
             );
