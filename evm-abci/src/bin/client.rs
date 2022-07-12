@@ -2,7 +2,7 @@ use ethers::prelude::*;
 use evm_abci::types::{Query, QueryResponse};
 use eyre::Result;
 
-async fn query_balance(host: &str, address: Address) -> Result<U256> {
+async fn query_balance(host: &str, address: Address) -> Result<String> {
     let query = Query::Balance(address);
     let query = serde_json::to_string(&query)?;
 
@@ -15,7 +15,9 @@ async fn query_balance(host: &str, address: Address) -> Result<U256> {
 
     let val = res.bytes().await?;
     let val: QueryResponse = serde_json::from_slice(&val)?;
-    Ok(val.as_balance())
+    let val = val.as_balance();
+    let val = ethers::utils::format_units(val, "ether")?;
+    Ok(val)
 }
 
 async fn send_transaction(host: &str, from: Address, to: Address, value: U256) -> Result<()> {
@@ -53,13 +55,13 @@ async fn main() -> Result<()> {
     println!("Querying initial balances from {}:", host_1);
 
     let alice_initial_balance = query_balance(host_1, alice).await?;
-    println!("Alice balance before: {}", alice_initial_balance);
+    println!("Alice balance before: {} ETH", alice_initial_balance);
 
     let bob_initial_balance = query_balance(host_1, bob).await?;
-    println!("Bob balance before: {}", bob_initial_balance);
+    println!("Bob balance before: {} ETH", bob_initial_balance);
 
     let charlie_initial_balance = query_balance(host_1, charlie).await?;
-    println!("Charlie balance before: {}", charlie_initial_balance);
+    println!("Charlie balance before: {} ETH", charlie_initial_balance);
 
     println!("---");
 
@@ -79,13 +81,13 @@ async fn main() -> Result<()> {
     println!("Quering final balances from {}:", host_2);
 
     let alice_final_balance_host_2 = query_balance(host_2, alice).await?;
-    println!("Alice balance after: {}", alice_final_balance_host_2);
+    println!("Alice balance after: {} ETH", alice_final_balance_host_2);
 
     let bob_final_balance_host_2 = query_balance(host_2, bob).await?;
-    println!("Bob balance after: {}", bob_final_balance_host_2);
+    println!("Bob balance after: {} ETH", bob_final_balance_host_2);
 
     let charlie_final_balance_host_2 = query_balance(host_2, charlie).await?;
-    println!("Charlie balance after: {}", charlie_final_balance_host_2);
+    println!("Charlie balance after: {} ETH", charlie_final_balance_host_2);
 
     println!("---");
 
@@ -93,13 +95,13 @@ async fn main() -> Result<()> {
     println!("Quering final balances from {}:", host_3);
 
     let alice_final_balance_host_3 = query_balance(host_3, alice).await?;
-    println!("Alice balance after: {}", alice_final_balance_host_3);
+    println!("Alice balance after: {} ETH", alice_final_balance_host_3);
 
     let bob_final_balance_host_3 = query_balance(host_3, bob).await?;
-    println!("Bob balance after: {}", bob_final_balance_host_3);
+    println!("Bob balance after: {} ETH", bob_final_balance_host_3);
 
     let charlie_final_balance_host_3 = query_balance(host_3, charlie).await?;
-    println!("Charlie balance after: {}", charlie_final_balance_host_3);
+    println!("Charlie balance after: {} ETH", charlie_final_balance_host_3);
 
     Ok(())
 }
