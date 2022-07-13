@@ -159,10 +159,10 @@ class LocalBench:
             sleep(self.duration)
             self._kill_nodes()
 
-            # Parse logs and return the parser.
-            Print.info('Parsing logs...')
-            return LogParser.process(PathMaker.logs_path(), faults=self.faults)
+            # # Parse logs and return the parser.
+            # Print.info('Parsing logs...')
+            # return LogParser.process(PathMaker.logs_path(), faults=self.faults)
 
-        except (subprocess.SubprocessError, ParseError) as e:
+        except Exception as e:
             self._kill_nodes()
             raise BenchError('Failed to run benchmark', e)
