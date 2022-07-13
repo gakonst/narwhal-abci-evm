@@ -1,0 +1,7 @@
+.committee.json
+.db-*/
+.node-*.json
+.parameters.json
+benchmark_client
+logs/
+node
