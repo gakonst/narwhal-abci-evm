@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
     // Query initial balances from host_1
     query_all_balances(host_1).await?;
 
-    println!("\n---\n");
+    println!("---");
 
     // Send conflicting transactions
     println!(
@@ -120,18 +120,18 @@ async fn main() -> Result<()> {
     send_transaction(host_2, *ALICE, *BOB, value).await?;
     send_transaction(host_3, *ALICE, *CHARLIE, value).await?;
 
-    println!("\n---\n");
+    println!("---");
 
     println!("Waiting for consensus...");
     // Takes ~5 seconds to actually apply the state transition?
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    println!("\n---\n");
+    println!("---");
 
     // Query final balances from host_2
     query_all_balances(host_2).await?;
 
-    println!("\n---\n");
+    println!("---");
 
     // Query final balances from host_3
     query_all_balances(host_3).await?;
