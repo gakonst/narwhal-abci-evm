@@ -1360,6 +1360,7 @@ dependencies = [
  "eyre",
  "foundry-evm",
  "hex",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",

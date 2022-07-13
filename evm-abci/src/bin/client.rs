@@ -1,43 +1,36 @@
 use ethers::prelude::*;
 use evm_abci::types::{Query, QueryResponse};
 use eyre::Result;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use yansi::{Paint};
-use crate::User::*;
 
-const ALICE: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const BOB: &str = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
-const CHARLIE: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+static ALICE: Lazy<Address> = Lazy::new(||{
+    "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".parse::<Address>().unwrap()
+});
+static BOB: Lazy<Address> = Lazy::new(||{
+    "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".parse::<Address>().unwrap()
+});
+static CHARLIE: Lazy<Address> = Lazy::new(||{
+    "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".parse::<Address>().unwrap()
+});
 
-#[derive(Copy, Clone)]
-enum User {
-    Alice,
-    Bob,
-    Charlie
-}
+static ADDRESS_TO_NAME: Lazy<HashMap<Address, &'static str>> = Lazy::new(||{
+    let mut address_to_name = HashMap::new();
+    address_to_name.insert(*ALICE, "Alice");
+    address_to_name.insert(*BOB, "Bob");
+    address_to_name.insert(*CHARLIE, "Charlie");
 
-fn user_to_address(user: User) -> Result<Address> {
-    match user {
-        Alice => Ok(ALICE.parse::<Address>()?),
-        Bob => Ok(BOB.parse::<Address>()?),
-        Charlie => Ok(CHARLIE.parse::<Address>()?),
-    }
-}
+    address_to_name
+});
 
-fn user_to_name(user: User) -> &'static str {
-    match user {
-        Alice => "Alice",
-        Bob => "Bob",
-        Charlie => "Charlie",
-    }
-}
 
 fn get_readable_eth_value(value: U256) -> Result<f64> {
     let value_string = ethers::utils::format_units(value, "ether")?;
     Ok(value_string.parse::<f64>()?)
 }
 
-async fn query_balance(host: &str, user: User) -> Result<()> {
-    let address = user_to_address(user)?;
+async fn query_balance(host: &str, address: Address) -> Result<()> {
     let query = Query::Balance(address);
     let query = serde_json::to_string(&query)?;
 
@@ -52,7 +45,7 @@ async fn query_balance(host: &str, user: User) -> Result<()> {
     let val: QueryResponse = serde_json::from_slice(&val)?;
     let val = val.as_balance();
     let readable_value = get_readable_eth_value(val)?;
-    let name = user_to_name(user);
+    let name = ADDRESS_TO_NAME.get(&address).unwrap();
     println!(
         "{}'s balance: {}",
         Paint::new(name).bold(),
@@ -67,16 +60,16 @@ async fn query_all_balances(host: &str) -> Result<()> {
         Paint::new(format!("{}", host)).bold()
     );
 
-    query_balance(host, Alice).await?;
-    query_balance(host, Bob).await?;
-    query_balance(host, Charlie).await?;
+    query_balance(host, *ALICE).await?;
+    query_balance(host, *BOB).await?;
+    query_balance(host, *CHARLIE).await?;
 
     Ok(())
 }
 
-async fn send_transaction(host: &str, from: User, to: User, value: U256) -> Result<()> {
-    let from_name = user_to_name(from);
-    let to_name = user_to_name(to);
+async fn send_transaction(host: &str, from: Address, to: Address, value: U256) -> Result<()> {
+    let from_name = ADDRESS_TO_NAME.get(&from).unwrap();
+    let to_name = ADDRESS_TO_NAME.get(&to).unwrap();
     let readable_value = get_readable_eth_value(value)?;
     println!(
         "{} sends TX to {} transferring {} to {}...",
@@ -86,11 +79,9 @@ async fn send_transaction(host: &str, from: User, to: User, value: U256) -> Resu
         Paint::red(to_name).bold()
     );
 
-    let from_address = user_to_address(from)?;
-    let to_address = user_to_address(to)?;
     let tx = TransactionRequest::new()
-        .from(from_address)
-        .to(to_address)
+        .from(from)
+        .to(to)
         .value(value)
         .gas(21000);
 
@@ -126,8 +117,8 @@ async fn main() -> Result<()> {
         Paint::new("Alice").bold(),
         Paint::red(format!("conflicting")).bold()
     );
-    send_transaction(host_2, Alice, Bob, value).await?;
-    send_transaction(host_3, Alice, Charlie, value).await?;
+    send_transaction(host_2, *ALICE, *BOB, value).await?;
+    send_transaction(host_3, *ALICE, *CHARLIE, value).await?;
 
     println!("\n---\n");
 
