@@ -34,7 +34,7 @@ impl App<CacheDB<EmptyDB>> {
                 "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                     .parse()
                     .unwrap(),
-                foundry_evm::revm::AccountInfo {
+                AccountInfo {
                     balance: ethers::utils::parse_ether(1.5).unwrap(),
                     ..Default::default()
                 },

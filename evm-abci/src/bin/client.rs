@@ -1,8 +1,43 @@
 use ethers::prelude::*;
 use evm_abci::types::{Query, QueryResponse};
 use eyre::Result;
+use yansi::{Paint};
+use crate::User::*;
 
-async fn query_balance(host: &str, address: Address) -> Result<String> {
+const ALICE: &str = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const BOB: &str = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+const CHARLIE: &str = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+
+#[derive(Copy, Clone)]
+enum User {
+    Alice,
+    Bob,
+    Charlie
+}
+
+fn user_to_address(user: User) -> Result<Address> {
+    match user {
+        Alice => Ok(ALICE.parse::<Address>()?),
+        Bob => Ok(BOB.parse::<Address>()?),
+        Charlie => Ok(CHARLIE.parse::<Address>()?),
+    }
+}
+
+fn user_to_name(user: User) -> &'static str {
+    match user {
+        Alice => "Alice",
+        Bob => "Bob",
+        Charlie => "Charlie",
+    }
+}
+
+fn get_readable_eth_value(value: U256) -> Result<f64> {
+    let value_string = ethers::utils::format_units(value, "ether")?;
+    Ok(value_string.parse::<f64>()?)
+}
+
+async fn query_balance(host: &str, user: User) -> Result<()> {
+    let address = user_to_address(user)?;
     let query = Query::Balance(address);
     let query = serde_json::to_string(&query)?;
 
@@ -16,14 +51,46 @@ async fn query_balance(host: &str, address: Address) -> Result<String> {
     let val = res.bytes().await?;
     let val: QueryResponse = serde_json::from_slice(&val)?;
     let val = val.as_balance();
-    let val = ethers::utils::format_units(val, "ether")?;
-    Ok(val)
+    let readable_value = get_readable_eth_value(val)?;
+    let name = user_to_name(user);
+    println!(
+        "{}'s balance: {}",
+        Paint::new(name).bold(),
+        Paint::green(format!("{} ETH", readable_value)).bold()
+    );
+    Ok(())
 }
 
-async fn send_transaction(host: &str, from: Address, to: Address, value: U256) -> Result<()> {
+async fn query_all_balances(host: &str) -> Result<()> {
+    println!(
+        "Querying balances from {}:",
+        Paint::new(format!("{}", host)).bold()
+    );
+
+    query_balance(host, Alice).await?;
+    query_balance(host, Bob).await?;
+    query_balance(host, Charlie).await?;
+
+    Ok(())
+}
+
+async fn send_transaction(host: &str, from: User, to: User, value: U256) -> Result<()> {
+    let from_name = user_to_name(from);
+    let to_name = user_to_name(to);
+    let readable_value = get_readable_eth_value(value)?;
+    println!(
+        "{} sends TX to {} transferring {} to {}...",
+        Paint::new(from_name).bold(),
+        Paint::red(host).bold(),
+        Paint::new(format!("{} ETH", readable_value)).bold(),
+        Paint::red(to_name).bold()
+    );
+
+    let from_address = user_to_address(from)?;
+    let to_address = user_to_address(to)?;
     let tx = TransactionRequest::new()
-        .from(from)
-        .to(to)
+        .from(from_address)
+        .to(to_address)
         .value(value)
         .gas(21000);
 
@@ -35,7 +102,7 @@ async fn send_transaction(host: &str, from: Address, to: Address, value: U256) -
         .query(&[("tx", tx)])
         .send()
         .await?;
-    
+
     Ok(())
 }
 
@@ -46,62 +113,37 @@ async fn main() -> Result<()> {
     let host_2 = "http://127.0.0.1:3009";
     let host_3 = "http://127.0.0.1:3016";
 
-    let value = ethers::utils::parse_units(1, 18).unwrap();
-    let alice = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".parse::<Address>()?;
-    let bob = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".parse::<Address>()?;
-    let charlie = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".parse::<Address>()?;
+    let value = ethers::utils::parse_units(1, 18)?;
 
     // Query initial balances from host_1
-    println!("Querying initial balances from {}:", host_1);
+    query_all_balances(host_1).await?;
 
-    let alice_initial_balance = query_balance(host_1, alice).await?;
-    println!("Alice balance before: {} ETH", alice_initial_balance);
-
-    let bob_initial_balance = query_balance(host_1, bob).await?;
-    println!("Bob balance before: {} ETH", bob_initial_balance);
-
-    let charlie_initial_balance = query_balance(host_1, charlie).await?;
-    println!("Charlie balance before: {} ETH", charlie_initial_balance);
-
-    println!("---");
+    println!("\n---\n");
 
     // Send conflicting transactions
-    println!("Alice sends conflicting transactions:");
-    println!("Alice sends TX to {} where she transfers 1 ETH to Bob...", host_2);
-    send_transaction(host_2, alice, bob, value).await?;
-    println!("Alice sends TX to {} where she transfers 1 ETH to Charlie...", host_3);
-    send_transaction(host_3, alice, charlie, value).await?;
+    println!(
+        "{} sends {} transactions:",
+        Paint::new("Alice").bold(),
+        Paint::red(format!("conflicting")).bold()
+    );
+    send_transaction(host_2, Alice, Bob, value).await?;
+    send_transaction(host_3, Alice, Charlie, value).await?;
 
-    println!("---");
+    println!("\n---\n");
 
+    println!("Waiting for consensus...");
     // Takes ~5 seconds to actually apply the state transition?
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
+    println!("\n---\n");
+
     // Query final balances from host_2
-    println!("Querying final balances from {}:", host_2);
+    query_all_balances(host_2).await?;
 
-    let alice_final_balance_host_2 = query_balance(host_2, alice).await?;
-    println!("Alice balance after: {} ETH", alice_final_balance_host_2);
-
-    let bob_final_balance_host_2 = query_balance(host_2, bob).await?;
-    println!("Bob balance after: {} ETH", bob_final_balance_host_2);
-
-    let charlie_final_balance_host_2 = query_balance(host_2, charlie).await?;
-    println!("Charlie balance after: {} ETH", charlie_final_balance_host_2);
-
-    println!("---");
+    println!("\n---\n");
 
     // Query final balances from host_3
-    println!("Querying final balances from {}:", host_3);
-
-    let alice_final_balance_host_3 = query_balance(host_3, alice).await?;
-    println!("Alice balance after: {} ETH", alice_final_balance_host_3);
-
-    let bob_final_balance_host_3 = query_balance(host_3, bob).await?;
-    println!("Bob balance after: {} ETH", bob_final_balance_host_3);
-
-    let charlie_final_balance_host_3 = query_balance(host_3, charlie).await?;
-    println!("Charlie balance after: {} ETH", charlie_final_balance_host_3);
+    query_all_balances(host_3).await?;
 
     Ok(())
 }
