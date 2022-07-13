@@ -5,3 +5,4 @@
 benchmark_client
 logs/
 node
+venv/
